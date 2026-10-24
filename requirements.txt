@@ -1,0 +1,5 @@
+# Core (also installed on the Wazuh server by wazuh/install.sh). Works on Python 3.9-3.13.
+numpy>=1.23
+pandas>=2.0
+scikit-learn>=1.2
+joblib>=1.2

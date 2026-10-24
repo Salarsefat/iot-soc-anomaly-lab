@@ -1,0 +1,4 @@
+-r requirements.txt
+matplotlib>=3.6     # HTML report figures
+pytest>=7
+jupyterlab>=4       # notebook walkthrough

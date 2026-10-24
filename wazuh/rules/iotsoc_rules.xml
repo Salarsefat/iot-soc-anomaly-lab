@@ -1,0 +1,125 @@
+<!--
+  IoT SOC anomaly lab - custom Wazuh rules (rule IDs 100600-100629).
+  Installed by wazuh/install.sh as /var/ossec/etc/rules/iotsoc_rules.xml
+  Check the IDs are unused on your manager before installing.
+
+  Two inputs, both read by the Wazuh logcollector as JSON lines:
+    /var/log/iotsoc/gateway.json    IoT gateway events      ("iotsoc": "gateway")
+    /var/log/iotsoc/ml_alerts.json  ML results from iotsoc  ("iotsoc": "ml")
+-->
+<group name="iotsoc,">
+
+  <!-- ===================== Gateway telemetry ===================== -->
+
+  <rule id="100600" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="iotsoc">^gateway$</field>
+    <description>IoT gateway event: $(kind) from $(device_id)</description>
+    <group>iot_gateway,</group>
+  </rule>
+
+  <rule id="100601" level="5">
+    <if_sid>100600</if_sid>
+    <field name="kind">^device_auth$</field>
+    <field name="outcome">^failure$</field>
+    <description>IoT: failed $(service) login on $(device_id) as $(account) from $(src_ip)</description>
+    <group>authentication_failed,iotsoc_signature,</group>
+  </rule>
+
+  <rule id="100602" level="10" frequency="10" timeframe="300">
+    <if_matched_sid>100601</if_matched_sid>
+    <same_field>device_id</same_field>
+    <description>IoT: brute force against $(device_id) - repeated failed $(service) logins</description>
+    <mitre>
+      <id>T1110.001</id>
+    </mitre>
+    <group>authentication_failures,iotsoc_signature,</group>
+  </rule>
+
+  <rule id="100603" level="3">
+    <if_sid>100600</if_sid>
+    <field name="kind">^device_auth$</field>
+    <field name="outcome">^success$</field>
+    <description>IoT: successful $(service) login on $(device_id) as $(account) from $(src_ip)</description>
+    <group>authentication_success,</group>
+  </rule>
+
+  <rule id="100604" level="10">
+    <if_sid>100600</if_sid>
+    <field name="kind">^mqtt_subscribe$</field>
+    <field name="topic" type="pcre2">^(#|\$SYS/)</field>
+    <description>IoT: $(device_id) subscribed to broad MQTT topic $(topic)</description>
+    <mitre>
+      <id>T1040</id>
+    </mitre>
+    <group>iotsoc_signature,</group>
+  </rule>
+
+  <rule id="100605" level="3">
+    <if_sid>100600</if_sid>
+    <field name="kind">^fw_update$</field>
+    <field name="fw_signed">^true$</field>
+    <description>IoT: signed firmware $(fw_version) installed on $(device_id) from $(fw_source)</description>
+  </rule>
+
+  <rule id="100606" level="12">
+    <if_sid>100600</if_sid>
+    <field name="kind">^fw_update$</field>
+    <field name="fw_signed">^false$</field>
+    <description>IoT: UNSIGNED firmware $(fw_version) installed on $(device_id) from $(fw_source)</description>
+    <mitre>
+      <id>T1542.001</id>
+    </mitre>
+    <group>iotsoc_signature,</group>
+  </rule>
+
+  <!-- Level 2, not 0: on Wazuh 4.14.7 a frequency rule (100608) never fired when its
+       if_matched_sid parent had level 0 (checked with wazuh-logtest). Level 2 is below the
+       default log_alert_level (3), so these per-flow matches are not written as alerts. -->
+  <rule id="100607" level="2">
+    <if_sid>100600</if_sid>
+    <field name="kind">^flow$</field>
+    <field name="allowlisted">^no$</field>
+    <description>IoT: $(device_id) connected to non-allowlisted internal host $(dst_ip):$(dst_port)</description>
+  </rule>
+
+  <rule id="100608" level="10" frequency="20" timeframe="300">
+    <if_matched_sid>100607</if_matched_sid>
+    <same_field>device_id</same_field>
+    <description>IoT: internal scan from $(device_id) - many non-allowlisted connections</description>
+    <mitre>
+      <id>T1046</id>
+    </mitre>
+    <group>iotsoc_signature,</group>
+  </rule>
+
+  <rule id="100609" level="5">
+    <if_sid>100600</if_sid>
+    <field name="kind">^config_change$</field>
+    <description>IoT: configuration change on $(device_id) by $(account): $(setting)</description>
+  </rule>
+
+  <!-- ===================== ML results (iotsoc live) ===================== -->
+
+  <rule id="100620" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="iotsoc">^ml$</field>
+    <description>IoT SOC ML result for $(device_id)</description>
+    <group>iot_ml,</group>
+  </rule>
+
+  <rule id="100621" level="7">
+    <if_sid>100620</if_sid>
+    <field name="severity">^medium$</field>
+    <description>IoT ML anomaly (medium) on $(device_id): $(reasons)</description>
+    <group>anomaly_detection,iot_ml,</group>
+  </rule>
+
+  <rule id="100622" level="11">
+    <if_sid>100620</if_sid>
+    <field name="severity">^high$</field>
+    <description>IoT ML anomaly (HIGH, models agree) on $(device_id): $(reasons)</description>
+    <group>anomaly_detection,iot_ml,</group>
+  </rule>
+
+</group>
